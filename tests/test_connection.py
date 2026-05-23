@@ -1,6 +1,19 @@
 """
-Test BigQuery connection and basic dataset access.
-Run with: python tests/test_connection.py
+OBJECTIVE:
+-To test if the BigQuery connection is working and if the service account key file is valid.
+
+INSTRUCTIONS:
+1- To run the test, you need to have the service account key file in the config/credentials directory.
+The file is called service_account.json.
+2- Run with: python tests/test_connection.py
+
+REQUIREMENTS:
+-To get a service account key file, create a GCP service account with BigQuery Data Editor and BigQuery Job User roles and place the JSON key at config/credentials/service_account.json
+
+OUTPUT:
+-If the connection is successful, you will see the message "✅ BigQuery connection successful!" and the number of events on 2020-11-01.
+-If the connection is not successful, you will see the error message.
+
 """
 from google.cloud import bigquery
 from google.oauth2 import service_account
