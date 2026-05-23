@@ -1,0 +1,12 @@
+db-dtypes==1.6.0
+dbt-bigquery==1.11.1
+google-auth==2.53.0
+google-auth-oauthlib==1.4.0
+google-cloud-bigquery==3.41.0
+gspread==6.2.1
+gspread-dataframe==4.0.0
+pandas==2.3.3
+pandas-gbq==0.35.0
+pydata-google-auth==1.9.1
+python-dotenv==1.1.1
+PyYAML==6.0.3

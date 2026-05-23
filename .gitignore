@@ -1,0 +1,21 @@
+# Credentials - NEVER commit these
+config/credentials/
+*.json
+service_account*.json
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# dbt
+dbt/target/
+dbt/logs/
+dbt/.user.yml
+dbt/profiles.yml
+
+# OS
+.DS_Store
+Thumbs.db
