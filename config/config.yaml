@@ -1,0 +1,44 @@
+project:
+  gcp_project_id: darkroom-497016
+  dataset: darkroom_ecommerce
+  location: US
+
+source:
+  project: bigquery-public-data
+  dataset: ga4_obfuscated_sample_ecommerce
+  table_prefix: events_
+  start_date: "20201101"
+  end_date: "20210131"
+
+credentials:
+  service_account_path: config/credentials/service_account.json
+
+sheets:
+  spreadsheet_name: "GA4 Ecommerce ETL - Reporting"
+  daily_tab: "Daily Metrics"
+  weekly_tab: "Weekly Metrics"
+  temp_daily_tab: "_temp_daily"
+  temp_weekly_tab: "_temp_weekly"
+
+dbt:
+  project_dir: dbt
+  profiles_dir: dbt
+  target: prod
+
+pipeline:
+  max_retries: 3
+  retry_delay_seconds: 300
+  log_table: pipeline_runs
+
+week_definition:
+  standard: ISO 8601
+  start_day: Monday
+  end_day: Sunday
+  label_format: "YYYY-WNN"
+  note: >
+    -Standard Choice: This pipeline defaults to ISO 8601 weeks (Monday–Sunday), which is the most common enterprise standard.
+    -GA4 Native Context: The native GA4 user interface defaults to a Sunday–Saturday reporting cycle.
+    -Configurability: The week boundary is entirely parameter-driven. It can be easily toggled to a Sunday–Saturday cycle to 
+      match native GA4 UI views if requested by stakeholder business requirements.
+
+  reconciliation_tolerance_usd: 0.01
