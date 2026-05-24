@@ -15,9 +15,12 @@ OUTPUT:
 -If the connection is not successful, you will see the error message.
 
 """
+
+# IMPORTS
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
+# FUNCTIONS
 def test_bigquery_connection():
     credentials = service_account.Credentials.from_service_account_file(
         'config/credentials/service_account.json',
@@ -35,9 +38,12 @@ def test_bigquery_connection():
         WHERE _TABLE_SUFFIX = '20201101'
     """
 
+    # EXECUTE QUERY
     result = list(client.query(query).result())
     print(f"✅ BigQuery connection successful!")
     print(f"✅ Events on 2020-11-01: {result[0].total_events:,}")
 
+# MAIN
 if __name__ == "__main__":
-    test_bigquery_connection()
+    # RUN TEST
+    run_test()
