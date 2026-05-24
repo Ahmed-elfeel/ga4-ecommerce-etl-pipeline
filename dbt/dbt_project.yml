@@ -1,0 +1,75 @@
+name: 'ga4_ecommerce_etl'
+version: '1.0.0'
+config-version: 2
+
+profile: 'ga4_ecommerce_etl'
+
+model-paths: ["models"]
+test-paths: ["tests"]
+clean-targets: ["target", "dbt_packages"]
+
+# =============================================================================
+# MATERIALIZATION STRATEGY
+# =============================================================================
+# Materialization is decided per model based on the nature of the computation,
+# not uniformly per layer. The decision framework is:
+#
+#   incremental → time-series data that grows daily, expensive computation
+#   table       → dimension data OR tiny aggregations, cheap full rebuild
+#   view        → not used in this project (chain reaction risk with UNNEST)
+#
+# Per-model decisions:
+#
+# STAGING LAYER:
+#   stg_sessions       → incremental: time-series, UNNEST(event_params) expensive
+#   stg_purchases      → incremental: time-series, core transaction data
+#   stg_purchase_items → incremental: time-series, item-level detail
+#   stg_users          → table: slowly-growing dimension, cheap full rebuild,
+#                                no natural incremental unique key
+#
+# INTERMEDIATE LAYER:
+#   int_daily_activity   → incremental: time-series, expensive join of
+#                                       stg_purchases + stg_users
+#   int_product_revenue  → incremental: time-series, item-level transaction detail
+#
+# MART LAYER:
+#   mart_daily_metrics   → table: 92 rows total, trivial rebuild, fast for
+#                                 Google Sheets queries (<2 seconds)
+#   mart_weekly_metrics  → table: 14 rows total, trivial rebuild
+#   mart_product_metrics → table: pre-aggregated, fast queries
+#
+# Note on mart as table vs incremental:
+#   Incremental aggregations are complex and risky — aggregates can silently
+#   change when upstream data is corrected. Full rebuild at mart is safe,
+#   simple, and costs milliseconds given the small row counts.
+# =============================================================================
+
+models:
+  ga4_ecommerce_etl:
+
+    staging:
+      # Default for staging: incremental time-series processing
+      # Exception: stg_users overridden to table below
+      +materialized: incremental
+      +incremental_strategy: merge
+      +schema: staging
+      +on_schema_change: fail
+      stg_users:
+        # Override: stg_users is a slowly-changing dimension
+        # not a time-series. Full rebuild is cheap and correct.
+        +materialized: table
+
+    intermediate:
+      # All intermediate models are time-series transaction-level
+      # incremental is correct for all — no exceptions needed
+      +materialized: incremental
+      +incremental_strategy: merge
+      +schema: intermediate
+      +on_schema_change: fail
+
+    mart:
+      # All mart models are pre-aggregated reporting tables
+      # Full rebuild is trivial (92 rows daily, 14 rows weekly)
+      # table ensures Google Sheets queries complete in <2 seconds
+      +materialized: table
+      +schema: mart

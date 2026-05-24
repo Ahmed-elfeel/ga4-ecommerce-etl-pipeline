@@ -19,3 +19,9 @@ dbt/profiles.yml
 # OS
 .DS_Store
 Thumbs.db
+
+# dbt generated folders
+logs/
+ga4_ecommerce_etl/
+dbt/target/
+dbt/logs/
