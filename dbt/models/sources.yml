@@ -1,0 +1,83 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      Raw layer containing unmodified GA4 ecommerce event data
+      extracted from the public BigQuery dataset.
+      Data covers Google Merchandise Store activity from
+      2020-11-01 to 2021-01-31 (92 days).
+    database: darkroom-497016
+    schema: darkroom_ecommerce
+    tables:
+      - name: raw_events
+        description: >
+          All GA4 events flattened at top-level scalar fields.
+          Nested structures (event_params, user_properties) are
+          kept as repeated records — unnesting happens in staging.
+          Partitioned by event_date_dt.
+        columns:
+          - name: event_date_dt
+            description: Date of the event (partition key)
+          - name: event_name
+            description: GA4 event name (purchase, session_start, page_view, etc)
+          - name: event_timestamp
+            description: Event timestamp in microseconds
+          - name: user_pseudo_id
+            description: Anonymous user identifier assigned by GA4
+          - name: user_first_touch_timestamp
+            description: Timestamp in microseconds when user was first seen
+          - name: event_params
+            description: >
+              Repeated record of key-value pairs containing event parameters.
+              Kept nested — UNNEST happens in staging models.
+          - name: ecommerce
+            description: >
+              Struct containing transaction-level ecommerce data including
+              transaction_id, purchase_revenue_in_usd, refund_value_in_usd
+          - name: traffic_source
+            description: Struct containing source, medium, and campaign name
+          - name: device
+            description: Struct containing device category, OS, and browser
+          - name: geo
+            description: Struct containing country, region, and city
+          - name: ingested_at
+            description: Timestamp when this row was loaded by extract.py
+          - name: source_table_suffix
+            description: The YYYYMMDD suffix of the source daily shard table
+
+      - name: raw_purchase_items
+        description: >
+          Purchase items unnested from GA4 events.
+          One row per item per transaction.
+          Unnesting happens at raw layer because items represent
+          a fundamentally different grain than events — this is a
+          structural split, not a transformation decision.
+          Partitioned by event_date_dt.
+        columns:
+          - name: event_date_dt
+            description: Date of the purchase (partition key)
+          - name: user_pseudo_id
+            description: Anonymous user identifier
+          - name: transaction_id
+            description: Unique transaction identifier
+          - name: item_id
+            description: Product identifier
+          - name: item_name
+            description: Product name
+          - name: item_brand
+            description: Product brand
+          - name: item_category
+            description: Primary product category
+          - name: price_in_usd
+            description: Unit price in USD
+          - name: quantity
+            description: Number of units purchased
+          - name: item_revenue_in_usd
+            description: Total revenue for this item (price * quantity)
+          - name: item_refund_in_usd
+            description: Refund amount for this item
+          - name: ingested_at
+            description: Timestamp when this row was loaded by extract.py
+          - name: source_table_suffix
+            description: The YYYYMMDD suffix of the source daily shard table
