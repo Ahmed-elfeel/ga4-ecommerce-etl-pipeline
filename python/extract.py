@@ -49,6 +49,7 @@ Design decisions:
 import argparse
 import logging
 import sys
+import time
 import uuid
 from datetime import datetime, date, timezone
 
@@ -67,6 +68,29 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 log = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────
+# RETRY HELPER
+# ─────────────────────────────────────────────
+def with_retries(fn, max_retries=3, delay_seconds=30, backoff=2.0, label=""):
+    """Retry an idempotent operation with exponential backoff.
+    Safe here because all retried ops (DELETE+INSERT) are idempotent.
+    """
+    attempt = 0
+    while True:
+        try:
+            return fn()
+        except Exception as e:
+            attempt += 1
+            if attempt > max_retries:
+                raise
+            wait = delay_seconds * (backoff ** (attempt - 1))
+            log.warning(
+                f"{label} failed (attempt {attempt}/{max_retries}): {e} — "
+                f"retrying in {wait:.0f}s"
+            )
+            time.sleep(wait)
 
 
 # ─────────────────────────────────────────────
@@ -653,15 +677,26 @@ def extract(
         started_at = datetime.now(timezone.utc)
 
         try:
-            # Run raw_events MERGE
-            events_rows = run_merge_for_date(
-                client, config, target_date, raw_events_sql
+            retries = config['pipeline']['max_retries']
+            delay   = config['pipeline']['retry_delay_seconds']
+
+            # Run raw_events MERGE (retried — idempotent DELETE+INSERT)
+            events_rows = with_retries(
+                lambda: run_merge_for_date(
+                    client, config, target_date, raw_events_sql
+                ),
+                max_retries=retries, delay_seconds=delay,
+                label=f"raw_events MERGE {target_date}"
             )
             log.info(f"  raw_events: {events_rows:,} rows inserted")
 
-            # Run raw_purchase_items MERGE
-            items_rows = run_merge_for_date(
-                client, config, target_date, raw_items_sql
+            # Run raw_purchase_items MERGE (retried — idempotent DELETE+INSERT)
+            items_rows = with_retries(
+                lambda: run_merge_for_date(
+                    client, config, target_date, raw_items_sql
+                ),
+                max_retries=retries, delay_seconds=delay,
+                label=f"raw_purchase_items MERGE {target_date}"
             )
             log.info(f"  raw_purchase_items: {items_rows:,} rows inserted")
 

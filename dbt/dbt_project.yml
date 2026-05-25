@@ -27,11 +27,6 @@ clean-targets: ["target", "dbt_packages"]
 #   stg_users          → table: slowly-growing dimension, cheap full rebuild,
 #                                no natural incremental unique key
 #
-# INTERMEDIATE LAYER:
-#   int_daily_activity   → incremental: time-series, expensive join of
-#                                       stg_purchases + stg_users
-#   int_product_revenue  → incremental: time-series, item-level transaction detail
-#
 # MART LAYER:
 #   mart_daily_metrics   → table: 92 rows total, trivial rebuild, fast for
 #                                 Google Sheets queries (<2 seconds)
@@ -53,19 +48,11 @@ models:
       +materialized: incremental
       +incremental_strategy: merge
       +schema: staging
-      +on_schema_change: fail
+      +on_schema_change: sync_all_columns   # matches per-model config
       stg_users:
         # Override: stg_users is a slowly-changing dimension
         # not a time-series. Full rebuild is cheap and correct.
         +materialized: table
-
-    intermediate:
-      # All intermediate models are time-series transaction-level
-      # incremental is correct for all — no exceptions needed
-      +materialized: incremental
-      +incremental_strategy: merge
-      +schema: intermediate
-      +on_schema_change: fail
 
     mart:
       # All mart models are pre-aggregated reporting tables

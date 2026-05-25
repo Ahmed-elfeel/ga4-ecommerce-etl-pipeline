@@ -14,11 +14,11 @@ credentials:
   service_account_path: config/credentials/service_account.json
 
 sheets:
+  spreadsheet_id: "1JBQIF8Qq2b6rPFioHVJAjI7gka5Bxw3jzK3EsBOD50Y"
   spreadsheet_name: "GA4 Ecommerce ETL - Reporting"
   daily_tab: "Daily Metrics"
   weekly_tab: "Weekly Metrics"
-  temp_daily_tab: "_temp_daily"
-  temp_weekly_tab: "_temp_weekly"
+  products_tab: "Top Products"
 
 dbt:
   project_dir: dbt
@@ -27,7 +27,7 @@ dbt:
 
 pipeline:
   max_retries: 3
-  retry_delay_seconds: 300
+  retry_delay_seconds: 30
   log_table: pipeline_runs
 
 week_definition:
@@ -38,11 +38,7 @@ week_definition:
   note: >
     -Standard Choice: This pipeline defaults to ISO 8601 weeks (Monday–Sunday), which is the most common enterprise standard.
     -GA4 Native Context: The native GA4 user interface defaults to a Sunday–Saturday reporting cycle.
-    -Configurability: The week boundary is entirely parameter-driven. It can be easily toggled to a Sunday–Saturday cycle to 
+    -Configurability: The week boundary is entirely parameter-driven. It can be easily toggled to a Sunday–Saturday cycle to
       match native GA4 UI views if requested by stakeholder business requirements.
 
   reconciliation_tolerance_usd: 0.01
-sheets:
-  spreadsheet_id: "1JBQIF8Qq2b6rPFioHVJAjI7gka5Bxw3jzK3EsBOD50Y"
-  daily_tab: "Daily Metrics"
-  weekly_tab: "Weekly Metrics"
