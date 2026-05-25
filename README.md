@@ -20,7 +20,7 @@ Mart Layer (BigQuery)
 mart_daily_metrics, mart_weekly_metrics, mart_product_metrics
 ↓ sheets.py
 Google Sheets
-Tab 1: Daily Metrics | Tab 2: Weekly Metrics
+Tab 1: Daily Metrics | Tab 2: Weekly Metrics | Tab 3: Top Products
 
 ## Project Structure
 ga4-ecommerce-etl-pipeline/
@@ -96,7 +96,7 @@ python python/sheets.py           # Export to Sheets
 | Gross Revenue | SUM of purchase_revenue_in_usd |
 | Refund Amount | SUM of refund_value_in_usd |
 | Net Revenue | Gross Revenue − Refund Amount |
-| Total Orders | COUNT DISTINCT transaction_id |
+| Total Orders | COUNT DISTINCT event_id (purchase event grain — see Data Quality) |
 | Avg Order Value | Gross Revenue / Total Orders |
 | Unique Customers | COUNT DISTINCT user_pseudo_id on purchase events |
 | New Customers | Users whose first purchase is on this date |
@@ -109,7 +109,7 @@ Same metrics aggregated by ISO week (Monday–Sunday).
 
 ## Data Quality
 
-- 18 dbt tests on every run (unique + not_null on all primary keys)
+- Structural tests on every run (unique + not_null on all primary keys) plus business-logic reconciliation tests
 - All 92 dates validated against source — row counts and revenue match exactly
 - pipeline_runs table tracks every run with status, rows processed, and duration
 
@@ -121,7 +121,16 @@ Same metrics aggregated by ISO week (Monday–Sunday).
 
 See [docs/production_design.md](docs/production_design.md) for full production architecture using Cloud Run Jobs + Cloud Scheduler.
 
-## Known Data Characteristics
+## Data Quality & Caveats
 
-- **2020-11-01:** Zero purchase metrics — all purchase events have NULL transaction_id (obfuscated dataset)
+- **Order grain:** `transaction_id` is not unique per order in this obfuscated
+  dataset (distinct purchases share ids), so orders are counted at the purchase
+  event grain (`event_id`). This is the reliable unit and equals `transaction_id`
+  counts whenever ids are clean.
+- **Weekly customer metrics are non-additive.** `unique_customers` and
+  `returning_customers` are recomputed at week grain from source, not summed from
+  daily — a customer active on multiple days in a week is counted once. Revenue,
+  orders, and sessions remain additive and reconcile to the daily tab exactly.
+- **2020-11-01:** zero purchase metrics — all purchase events that day have NULL
+  `transaction_id` (obfuscation artifact), so they are excluded from orders/revenue.
 - **first_seen_date:** NULL for ~30 purchase-only users with no session_start events (expected)

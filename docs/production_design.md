@@ -191,14 +191,15 @@ In production, an intermediate layer would be introduced if:
 
 ## Data Quality
 
-**18 dbt tests run on every pipeline execution:**
-- unique + not_null on all primary keys
-- not_null on critical foreign keys and business metrics
+**dbt tests run on every pipeline execution:**
+- Structural: unique + not_null on all primary keys; FK integrity on stg_purchase_items → stg_purchases
+- Business-logic reconciliation: net revenue identity, weekly→daily additive reconciliation, new customers ≤ orders sanity check, conversion rate non-negative
 
 **Source validation:**
 All 92 dates validated against source — row counts, revenue, orders, customers, and sessions match the GA4 public dataset exactly.
 
 **Known data characteristics:**
-- 2020-11-01: 0 purchase metrics — all 14 purchase events have NULL transaction_id (obfuscated dataset characteristic)
-- Conversion rate can theoretically exceed 100% due to dataset obfuscation
+- **Order grain:** `transaction_id` is not unique per order in this obfuscated dataset; orders are counted at the purchase event grain (`event_id`).
+- **Weekly customer metrics are non-additive:** `unique_customers` and `returning_customers` are recomputed at week grain from source, not summed from daily.
+- **2020-11-01:** 0 purchase metrics — all purchase events that day have NULL `transaction_id` (obfuscation artifact), excluded from orders/revenue.
 - first_seen_date is NULL for ~30 purchase-only users with no session_start events (valid, not a data quality issue)
