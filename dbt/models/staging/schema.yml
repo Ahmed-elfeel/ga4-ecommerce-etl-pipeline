@@ -102,8 +102,9 @@ models:
           - not_null
 
           - relationships:
-              to: ref('stg_purchases')
-              field: event_id
+              arguments:
+                to: ref('stg_purchases')
+                field: event_id
 
   - name: stg_users
 

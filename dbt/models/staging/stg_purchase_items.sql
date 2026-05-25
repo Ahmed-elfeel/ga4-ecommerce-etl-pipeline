@@ -73,4 +73,7 @@ FROM {{ source('raw', 'raw_purchase_items') }}
 
 {% if is_incremental() %}
 WHERE event_date_dt > (SELECT MAX(purchase_date) FROM {{ this }})
+  AND transaction_id IS NOT NULL
+{% else %}
+WHERE transaction_id IS NOT NULL
 {% endif %}
