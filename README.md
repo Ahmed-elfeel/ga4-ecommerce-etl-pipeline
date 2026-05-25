@@ -20,7 +20,7 @@ Mart Layer (BigQuery)
 mart_daily_metrics, mart_weekly_metrics, mart_product_metrics
 ↓ sheets.py
 Google Sheets
-Tab 1: Daily Metrics | Tab 2: Weekly Metrics | Tab 3: Top Products | Tab 4: Documentation
+Tab 1: Daily Metrics | Tab 2: Weekly Metrics | Tab 3: Top Products by Revenue | Tab 4: Top Products by Quantity Sold | Tab 5: Documentation
 
 ## Project Structure
 ga4-ecommerce-etl-pipeline/
@@ -107,10 +107,13 @@ python python/sheets.py           # Export to Sheets
 ### Weekly Metrics (Tab 2)
 Same metrics aggregated by ISO week (Monday–Sunday). Unique Customers and Returning Customers are recomputed at week grain — not summed from daily.
 
-### Top Products (Tab 3)
-Top 20 products by revenue over the full period: revenue rank, product name, category, total/refund/net revenue, quantity sold, orders, average price, and quantity rank.
+### Top Products by Revenue (Tab 3)
+Top 20 products ranked by total revenue over the full period: revenue rank, product name, category, total/refund/net revenue, quantity sold, orders, average price, and quantity rank.
 
-### Documentation (Tab 4)
+### Top Products by Quantity Sold (Tab 4)
+Top 20 products ranked by units sold over the full period: quantity rank, product name, category, quantity sold, orders, total/refund/net revenue, average price, and revenue rank.
+
+### Documentation (Tab 5)
 Business-friendly reference for all metrics across the three data tabs. Three columns — **Metric**, **What It Measures**, **How It's Calculated** — plus a Dataset Notes section covering date range, known data caveats, and the week definition. Intended for stakeholders who need to interpret the numbers without technical context.
 
 ## Data Quality

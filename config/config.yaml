@@ -18,7 +18,8 @@ sheets:
   spreadsheet_name: "GA4 Ecommerce ETL - Reporting"
   daily_tab: "Daily Metrics"
   weekly_tab: "Weekly Metrics"
-  products_tab: "Top Products"
+  products_by_revenue_tab: "Top Products by Revenue"
+  products_by_quantity_tab: "Top Products by Quantity Sold"
 
 dbt:
   project_dir: dbt

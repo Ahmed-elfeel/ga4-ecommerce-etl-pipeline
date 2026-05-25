@@ -347,15 +347,25 @@ def ensure_tab_exists(service, spreadsheet_id: str, tab_name: str) -> None:
         log.info(f"Created tab: {tab_name}")
 
 
+def delete_tab_if_exists(service, spreadsheet_id: str, tab_name: str) -> None:
+    """Delete a tab by name if it exists (used to retire renamed tabs)."""
+    meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    for sheet in meta['sheets']:
+        if sheet['properties']['title'] == tab_name:
+            sheet_id = sheet['properties']['sheetId']
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={"requests": [{"deleteSheet": {"sheetId": sheet_id}}]}
+            ).execute()
+            log.info(f"Deleted retired tab: {tab_name}")
+            return
+
+
 # ─────────────────────────────────────────────
 # BIGQUERY — READ PRODUCT METRICS
 # ─────────────────────────────────────────────
-def read_product_metrics(client: bigquery.Client, config: dict) -> list:
-    """
-    Read mart_product_metrics from BigQuery (top 20 by revenue).
-    Returns list of rows as lists (for Sheets API).
-    First row is headers.
-    """
+def read_products_by_revenue(client: bigquery.Client, config: dict) -> list:
+    """Top 20 products sorted by revenue. Revenue Rank leads the columns."""
     project = config['project']['gcp_project_id']
     query = f"""
         SELECT
@@ -374,7 +384,7 @@ def read_product_metrics(client: bigquery.Client, config: dict) -> list:
         LIMIT 20
     """
     rows = list(client.query(query).result())
-    log.info(f"Read {len(rows)} rows from mart_product_metrics")
+    log.info(f"Read {len(rows)} rows for Top Products by Revenue")
     headers = [
         "Revenue Rank", "Product", "Category", "Total Revenue (USD)",
         "Total Refunds (USD)", "Net Revenue (USD)", "Quantity Sold",
@@ -388,6 +398,44 @@ def read_product_metrics(client: bigquery.Client, config: dict) -> list:
             float(row.total_refunds or 0), float(row.net_revenue or 0),
             int(row.total_quantity_sold or 0), int(row.total_orders or 0),
             float(row.avg_price_usd or 0), int(row.quantity_rank or 0)
+        ])
+    return data
+
+
+def read_products_by_quantity(client: bigquery.Client, config: dict) -> list:
+    """Top 20 products sorted by quantity sold. Quantity Rank leads the columns."""
+    project = config['project']['gcp_project_id']
+    query = f"""
+        SELECT
+            quantity_rank,
+            item_name,
+            category,
+            total_quantity_sold,
+            total_orders,
+            total_revenue,
+            total_refunds,
+            net_revenue,
+            avg_price_usd,
+            revenue_rank
+        FROM `{project}.darkroom_ecommerce_mart.mart_product_metrics`
+        ORDER BY quantity_rank ASC
+        LIMIT 20
+    """
+    rows = list(client.query(query).result())
+    log.info(f"Read {len(rows)} rows for Top Products by Quantity Sold")
+    headers = [
+        "Quantity Rank", "Product", "Category", "Quantity Sold",
+        "Orders", "Total Revenue (USD)", "Total Refunds (USD)",
+        "Net Revenue (USD)", "Avg Price (USD)", "Revenue Rank"
+    ]
+    data = [headers]
+    for row in rows:
+        data.append([
+            int(row.quantity_rank or 0), str(row.item_name or ""),
+            str(row.category or ""), int(row.total_quantity_sold or 0),
+            int(row.total_orders or 0), float(row.total_revenue or 0),
+            float(row.total_refunds or 0), float(row.net_revenue or 0),
+            float(row.avg_price_usd or 0), int(row.revenue_rank or 0)
         ])
     return data
 
@@ -498,7 +546,7 @@ def build_documentation_data() -> tuple:
     spacer()
 
     # ── Top Products ───────────────────────────────────────────────
-    section("TOP PRODUCTS  —  Tab 3  (top 20 by revenue over the full period)")
+    section("TOP PRODUCTS  —  Tabs 3 & 4  (top 20 products; Tab 3 sorted by revenue, Tab 4 by quantity sold)")
     col("Revenue Rank",
         "This product's position when all products are sorted from highest to lowest total revenue",
         "1 = the product that earned the most revenue across the full Nov 2020 – Jan 2021 period")
@@ -688,10 +736,16 @@ def export_to_sheets(config: dict) -> None:
         num_columns=len(weekly_data[0])
     )
 
-    # ── Top Products ───────────────────────────
-    products_tab = config['sheets']['products_tab']
-    ensure_tab_exists(sheets_service, spreadsheet_id, products_tab)
-    # Re-fetch sheet IDs so the new tab is included for formatting
+    # ── Top Products (two tabs) ─────────────────
+    # Retire the old single "Top Products" tab if it still exists
+    delete_tab_if_exists(sheets_service, spreadsheet_id, "Top Products")
+
+    revenue_tab  = config['sheets']['products_by_revenue_tab']
+    quantity_tab = config['sheets']['products_by_quantity_tab']
+    ensure_tab_exists(sheets_service, spreadsheet_id, revenue_tab)
+    ensure_tab_exists(sheets_service, spreadsheet_id, quantity_tab)
+
+    # Re-fetch sheet IDs so both new tabs are included for formatting
     sheet_meta = sheets_service.spreadsheets().get(
         spreadsheetId=spreadsheet_id
     ).execute()
@@ -700,11 +754,17 @@ def export_to_sheets(config: dict) -> None:
         for s in sheet_meta['sheets']
     }
 
-    log.info("Exporting product metrics...")
-    product_data = read_product_metrics(bq_client, config)
-    write_to_sheet(sheets_service, spreadsheet_id, products_tab, product_data)
-    format_sheet(sheets_service, spreadsheet_id, sheet_ids[products_tab],
-                 num_columns=len(product_data[0]))
+    log.info("Exporting top products by revenue...")
+    revenue_data = read_products_by_revenue(bq_client, config)
+    write_to_sheet(sheets_service, spreadsheet_id, revenue_tab, revenue_data)
+    format_sheet(sheets_service, spreadsheet_id, sheet_ids[revenue_tab],
+                 num_columns=len(revenue_data[0]))
+
+    log.info("Exporting top products by quantity sold...")
+    quantity_data = read_products_by_quantity(bq_client, config)
+    write_to_sheet(sheets_service, spreadsheet_id, quantity_tab, quantity_data)
+    format_sheet(sheets_service, spreadsheet_id, sheet_ids[quantity_tab],
+                 num_columns=len(quantity_data[0]))
 
     # ── Documentation ──────────────────────────
     ensure_tab_exists(sheets_service, spreadsheet_id, "Documentation")
@@ -729,7 +789,8 @@ def export_to_sheets(config: dict) -> None:
         f"Export complete: "
         f"{len(daily_data)-1} daily rows, "
         f"{len(weekly_data)-1} weekly rows, "
-        f"{len(product_data)-1} product rows, "
+        f"{len(revenue_data)-1} products by revenue, "
+        f"{len(quantity_data)-1} products by quantity, "
         f"documentation tab written"
     )
 
