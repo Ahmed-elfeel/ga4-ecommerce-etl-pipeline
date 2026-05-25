@@ -110,7 +110,7 @@ first_purchase AS (
 )
 
 SELECT
-    fs.user_pseudo_id,
+    all_users.user_pseudo_id,
     fs.first_seen_date,
     TIMESTAMP_MICROS(fs.first_seen_timestamp)           AS first_seen_at,
     fs.last_seen_date,
@@ -128,8 +128,11 @@ SELECT
     fta.country,
     fta.city
 
-FROM first_session fs
-LEFT JOIN first_touch_attributes fta
-    ON fs.user_pseudo_id = fta.user_pseudo_id
-LEFT JOIN first_purchase fp
-    ON fs.user_pseudo_id = fp.user_pseudo_id
+FROM (
+    SELECT DISTINCT user_pseudo_id FROM first_session
+    UNION DISTINCT
+    SELECT DISTINCT user_pseudo_id FROM first_purchase
+) all_users
+LEFT JOIN first_session fs          ON all_users.user_pseudo_id = fs.user_pseudo_id
+LEFT JOIN first_touch_attributes fta ON all_users.user_pseudo_id = fta.user_pseudo_id
+LEFT JOIN first_purchase fp          ON all_users.user_pseudo_id = fp.user_pseudo_id

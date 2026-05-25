@@ -8,27 +8,19 @@
   ─────────────
   1. SESSION_KEY:
      MD5(user_pseudo_id + ga_session_id) for global uniqueness.
-     ga_session_id alone is NOT globally unique in GA4 —
-     it's timestamp-based and unique only per user.
-     Two different users can share the same ga_session_id.
+     ga_session_id alone is NOT globally unique in GA4.
 
-  2. SESSION-LEVEL GROUPING:
-     GROUP BY user_pseudo_id + ga_session_id (not event_id).
-     GA4 fires session_start multiple times per session
-     (e.g. on different pages). Grouping at session level
-     collapses these into one row naturally — no ROW_NUMBER needed.
-     More performant and semantically correct.
+  2. TWO-STEP AGGREGATION:
+     Step 1: Extract ga_session_id per event (event-level unnest)
+     Step 2: Group by user_pseudo_id + ga_session_id (session-level)
+     This correctly produces one row per session, not one row per user.
+     Previous bug: grouping by user_pseudo_id only collapsed all sessions
+     for a user into one row, undercounting sessions by ~35%.
 
   3. LANDING PAGE:
-     ARRAY_AGG ordered by event_timestamp picks the page from
-     the earliest session_start event — correct landing page definition.
+     ARRAY_AGG ordered by timestamp picks page from earliest event.
 
-  4. ENGAGEMENT:
-     MAX on session_engaged and engaged_session_event — if any
-     session_start event was engaged, the session is engaged.
-
-  5. INCREMENTAL:
-     Incremental on session_key. Safe to re-run.
+  4. INCREMENTAL on session_key.
 */
 
 {{
@@ -49,64 +41,106 @@ WITH source AS (
     {% endif %}
 ),
 
-unnested AS (
+-- Step 1: Extract ga_session_id at event level first
+event_level AS (
+    SELECT
+        event_date_dt,
+        event_id,
+        event_timestamp,
+        user_pseudo_id,
+        user_id,
+        user_first_touch_timestamp,
+        device,
+        geo,
+        traffic_source,
+        ep.key                                          AS param_key,
+        ep.value.int_value                              AS param_int,
+        ep.value.string_value                           AS param_str
+    FROM source
+    CROSS JOIN UNNEST(event_params) AS ep
+    WHERE ep.key IN (
+        'ga_session_id',
+        'ga_session_number',
+        'session_engaged',
+        'engaged_session_event',
+        'page_location',
+        'page_title',
+        'page_referrer'
+    )
+),
+
+-- Step 2: Pivot params at event level
+event_pivoted AS (
+    SELECT
+        event_date_dt,
+        event_id,
+        event_timestamp,
+        user_pseudo_id,
+        user_id,
+        user_first_touch_timestamp,
+        device,
+        geo,
+        traffic_source,
+        MAX(CASE WHEN param_key = 'ga_session_id'
+            THEN param_int END)                         AS ga_session_id,
+        MAX(CASE WHEN param_key = 'ga_session_number'
+            THEN param_int END)                         AS ga_session_number,
+        MAX(CASE WHEN param_key = 'session_engaged'
+            THEN param_str END)                         AS session_engaged,
+        MAX(CASE WHEN param_key = 'engaged_session_event'
+            THEN param_int END)                         AS engaged_session_event,
+        MAX(CASE WHEN param_key = 'page_location'
+            THEN param_str END)                         AS page_location,
+        MAX(CASE WHEN param_key = 'page_title'
+            THEN param_str END)                         AS page_title,
+        MAX(CASE WHEN param_key = 'page_referrer'
+            THEN param_str END)                         AS page_referrer
+    FROM event_level
+    GROUP BY
+        event_date_dt,
+        event_id,
+        event_timestamp,
+        user_pseudo_id,
+        user_id,
+        user_first_touch_timestamp,
+        device,
+        geo,
+        traffic_source
+),
+
+-- Step 3: Group by session (user + ga_session_id) — one row per session
+session_level AS (
     SELECT
         user_pseudo_id,
         user_id,
+        ga_session_id,
 
-        -- Session-level aggregation
-        -- Multiple session_start events per session collapsed into one row
         MIN(event_date_dt)                              AS session_date,
         MIN(event_timestamp)                            AS session_timestamp,
         MIN(user_first_touch_timestamp)                 AS user_first_touch_timestamp,
 
-        -- Session identifiers from event_params
-        MAX(CASE WHEN ep.key = 'ga_session_id'
-            THEN ep.value.int_value END)                AS ga_session_id,
-        MAX(CASE WHEN ep.key = 'ga_session_number'
-            THEN ep.value.int_value END)                AS ga_session_number,
+        MAX(ga_session_number)                          AS ga_session_number,
+        MAX(session_engaged)                            AS session_engaged,
+        MAX(engaged_session_event)                      AS engaged_session_event,
 
-        -- Engagement — MAX captures any engaged event in session
-        MAX(CASE WHEN ep.key = 'session_engaged'
-            THEN ep.value.string_value END)             AS session_engaged,
-        MAX(CASE WHEN ep.key = 'engaged_session_event'
-            THEN ep.value.int_value END)                AS engaged_session_event,
+        -- Landing page = first page in session
+        (ARRAY_AGG(page_location IGNORE NULLS
+            ORDER BY event_timestamp ASC LIMIT 1))[OFFSET(0)] AS landing_page,
+        (ARRAY_AGG(page_title IGNORE NULLS
+            ORDER BY event_timestamp ASC LIMIT 1))[OFFSET(0)] AS landing_page_title,
+        (ARRAY_AGG(page_referrer IGNORE NULLS
+            ORDER BY event_timestamp ASC LIMIT 1))[OFFSET(0)] AS referrer,
 
-        -- Landing page — first page of session (ordered by timestamp)
-        (ARRAY_AGG(
-            CASE WHEN ep.key = 'page_location'
-            THEN ep.value.string_value END
-            IGNORE NULLS
-            ORDER BY event_timestamp ASC
-            LIMIT 1
-        ))[OFFSET(0)]                                   AS landing_page,
-
-        (ARRAY_AGG(
-            CASE WHEN ep.key = 'page_title'
-            THEN ep.value.string_value END
-            IGNORE NULLS
-            ORDER BY event_timestamp ASC
-            LIMIT 1
-        ))[OFFSET(0)]                                   AS landing_page_title,
-
-        (ARRAY_AGG(
-            CASE WHEN ep.key = 'page_referrer'
-            THEN ep.value.string_value END
-            IGNORE NULLS
-            ORDER BY event_timestamp ASC
-            LIMIT 1
-        ))[OFFSET(0)]                                   AS referrer,
-
-        -- Device, geo, traffic from first event in session
         ANY_VALUE(device)                               AS device,
         ANY_VALUE(geo)                                  AS geo,
         ANY_VALUE(traffic_source)                       AS traffic_source
 
-    FROM source
-    CROSS JOIN UNNEST(event_params) AS ep
+    FROM event_pivoted
+    WHERE ga_session_id IS NOT NULL
     GROUP BY
         user_pseudo_id,
-        user_id
+        user_id,
+        ga_session_id
 )
 
 SELECT
@@ -119,40 +153,32 @@ SELECT
     session_date,
     TIMESTAMP_MICROS(session_timestamp)                 AS session_started_at,
 
-    -- User identifiers
     user_pseudo_id,
     user_id,
     TIMESTAMP_MICROS(user_first_touch_timestamp)        AS user_first_touch_at,
 
-    -- Session identifiers
     ga_session_id,
     ga_session_number,
 
-    -- Engagement
     CASE WHEN session_engaged = '1'
          THEN TRUE ELSE FALSE END                       AS is_engaged,
     COALESCE(engaged_session_event, 0)                  AS engaged_event_count,
 
-    -- Landing page (first page of session)
     landing_page,
     landing_page_title,
     referrer,
 
-    -- Traffic source
     traffic_source.source                               AS traffic_source,
     traffic_source.medium                               AS traffic_medium,
     traffic_source.name                                 AS traffic_campaign,
 
-    -- Device
     device.category                                     AS device_category,
     device.operating_system                             AS operating_system,
     device.web_info.browser                             AS browser,
     device.language                                     AS language,
 
-    -- Geography
     geo.country                                         AS country,
     geo.region                                          AS region,
     geo.city                                            AS city
 
-FROM unnested
-WHERE ga_session_id IS NOT NULL
+FROM session_level

@@ -42,3 +42,7 @@ week_definition:
       match native GA4 UI views if requested by stakeholder business requirements.
 
   reconciliation_tolerance_usd: 0.01
+sheets:
+  spreadsheet_id: "1JBQIF8Qq2b6rPFioHVJAjI7gka5Bxw3jzK3EsBOD50Y"
+  daily_tab: "Daily Metrics"
+  weekly_tab: "Weekly Metrics"
