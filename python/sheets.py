@@ -23,6 +23,7 @@ import yaml
 from google.cloud import bigquery
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+import argparse
 
 # ─────────────────────────────────────────────
 # LOGGING
@@ -94,7 +95,7 @@ def read_daily_metrics(client: bigquery.Client, config: dict) -> list:
             new_customers,
             returning_customers,
             sessions,
-            ROUND(conversion_rate * 100, 2) AS conversion_rate_pct
+            ROUND(conversion_rate, 2) AS conversion_rate_pct
         FROM `{project}.darkroom_ecommerce_mart.mart_daily_metrics`
         ORDER BY date ASC
     """
@@ -157,7 +158,7 @@ def read_weekly_metrics(client: bigquery.Client, config: dict) -> list:
             new_customers,
             returning_customers,
             sessions,
-            ROUND(conversion_rate * 100, 2) AS conversion_rate_pct
+            ROUND(conversion_rate, 2) AS conversion_rate_pct
         FROM `{project}.darkroom_ecommerce_mart.mart_weekly_metrics`
         ORDER BY week_start ASC
     """
@@ -362,5 +363,15 @@ def export_to_sheets(config: dict) -> None:
 # ENTRY POINT
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
-    config = load_config()
+    parser = argparse.ArgumentParser(
+        description='Export mart metrics to Google Sheets'
+    )
+    parser.add_argument(
+        '--config',
+        type=str,
+        default='config/config.yaml',
+        help='Path to config file'
+    )
+    args = parser.parse_args()
+    config = load_config(args.config)
     export_to_sheets(config)

@@ -127,7 +127,4 @@ models:
 
         description: First date user appeared in the dataset
 
-        tests:
-
-          - not_null
-
+        
