@@ -46,4 +46,4 @@ def test_bigquery_connection():
 # MAIN
 if __name__ == "__main__":
     # RUN TEST
-    run_test()
+    test_bigquery_connection()
