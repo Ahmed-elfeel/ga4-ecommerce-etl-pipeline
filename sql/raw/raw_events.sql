@@ -1,14 +1,18 @@
 /*
+
   raw_events.sql
   ==============
-  Merges one day of GA4 events from the public dataset
-  into the raw_events table.
+  Loads one day of GA4 events into raw_events.
+  Uses DELETE + INSERT pattern instead of MERGE.
+  MERGE has known issues with partitioned tables in BigQuery
+  where the partition key resolves to NULL silently.
 
   Called by: extract.py
   Parameters:
     {project}  — GCP project ID
     {dataset}  — BigQuery dataset name
     {date}     — format YYYYMMDD (e.g. 20201101)
+
 
   Design decisions:
   ─────────────────
@@ -43,11 +47,37 @@
      that date partition.
 
 */
+DELETE FROM `{project}.{dataset}.raw_events`
+WHERE source_table_suffix = '{date}';
 
-MERGE INTO `{project}.{dataset}.raw_events` AS target
+-- Step 2: Insert fresh data for this date
+INSERT INTO `{project}.{dataset}.raw_events` (
+    event_date_dt,
+    event_id,
+    event_name,
+    event_timestamp,
+    event_bundle_sequence_id,
+    user_pseudo_id,
+    user_id,
+    user_first_touch_timestamp,
+    event_params,
+    user_properties,
+    ecommerce,
+    traffic_source,
+    device,
+    geo,
+    user_ltv,
+    platform,
+    stream_id,
+    privacy_info,
+    app_info,
+    event_dimensions,
+    ingested_at,
+    source_table_suffix
+)
 
-USING (
-    SELECT
+
+SELECT
         -- Primary identifiers
         PARSE_DATE('%Y%m%d', event_date) AS event_date_dt, -- date of the event
 
@@ -111,60 +141,3 @@ USING (
         '{date}'                                AS source_table_suffix -- suffix of the source table (YYYYMMDD)
 
     FROM `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_{date}`
-
-) AS source
-
--- Partition guard: static literal forces BigQuery to prune
--- target to exactly one partition before evaluating event_id
-ON  target.event_date_dt = PARSE_DATE('%Y%m%d', '{date}')
-AND target.event_id      = source.event_id
-
--- Raw layer is immutable — insert only, never update
-WHEN NOT MATCHED THEN INSERT (
-    event_date_dt,
-    event_id,
-    event_name,
-    event_timestamp,
-    event_bundle_sequence_id,
-    user_pseudo_id,
-    user_id,
-    user_first_touch_timestamp,
-    event_params,
-    user_properties,
-    ecommerce,
-    traffic_source,
-    device,
-    geo,
-    user_ltv,
-    platform,
-    stream_id,
-    privacy_info,
-    app_info,
-    event_dimensions,
-    ingested_at,
-    source_table_suffix
-)
-VALUES (
-    source.event_date_dt,
-    source.event_id,
-    source.event_name,
-    source.event_timestamp,
-    source.event_bundle_sequence_id,
-    source.user_pseudo_id,
-    source.user_id,
-    source.user_first_touch_timestamp,
-    source.event_params,
-    source.user_properties,
-    source.ecommerce,
-    source.traffic_source,
-    source.device,
-    source.geo,
-    source.user_ltv,
-    source.platform,
-    source.stream_id,
-    source.privacy_info,
-    source.app_info,
-    source.event_dimensions,
-    source.ingested_at,
-    source.source_table_suffix
-);

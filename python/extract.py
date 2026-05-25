@@ -54,6 +54,7 @@ from datetime import datetime, date, timezone
 
 import yaml
 from google.cloud import bigquery
+from google.cloud.bigquery import SchemaField, TimePartitioning, TimePartitioningType
 from google.oauth2 import service_account
 
 
@@ -93,168 +94,170 @@ def get_bq_client(config: dict) -> bigquery.Client:
 
 
 # ─────────────────────────────────────────────
-# TABLE CREATION — BOOTSTRAP PATTERN
+# TABLE CREATION
 # ─────────────────────────────────────────────
-def create_raw_events_if_not_exists(
-    client: bigquery.Client,
-    config: dict
-) -> None:
-    """
-    Creates raw_events table using source schema as template.
+def create_raw_events_if_not_exists(client, config):
+    from google.cloud.bigquery import SchemaField
+    project  = config['project']['gcp_project_id']
+    dataset  = config['project']['dataset']
+    table_id = f"{project}.{dataset}.raw_events"
+    try:
+        client.get_table(table_id)
+        log.info("raw_events table ready")
+        return
+    except Exception:
+        pass
+    schema = [
+        SchemaField("event_date_dt",              "DATE",      mode="NULLABLE"),
+        SchemaField("event_id",                   "STRING",    mode="NULLABLE"),
+        SchemaField("event_name",                 "STRING",    mode="NULLABLE"),
+        SchemaField("event_timestamp",            "INTEGER",   mode="NULLABLE"),
+        SchemaField("event_bundle_sequence_id",   "INTEGER",   mode="NULLABLE"),
+        SchemaField("user_pseudo_id",             "STRING",    mode="NULLABLE"),
+        SchemaField("user_id",                    "STRING",    mode="NULLABLE"),
+        SchemaField("user_first_touch_timestamp", "INTEGER",   mode="NULLABLE"),
+        SchemaField("event_params", "RECORD", mode="REPEATED", fields=[
+            SchemaField("key", "STRING", mode="NULLABLE"),
+            SchemaField("value", "RECORD", mode="NULLABLE", fields=[
+                SchemaField("string_value", "STRING",  mode="NULLABLE"),
+                SchemaField("int_value",    "INTEGER", mode="NULLABLE"),
+                SchemaField("float_value",  "FLOAT",   mode="NULLABLE"),
+                SchemaField("double_value", "FLOAT",   mode="NULLABLE"),
+            ]),
+        ]),
+        SchemaField("user_properties", "RECORD", mode="REPEATED", fields=[
+            SchemaField("key", "INTEGER", mode="NULLABLE"),
+            SchemaField("value", "RECORD", mode="NULLABLE", fields=[
+                SchemaField("string_value",         "INTEGER", mode="NULLABLE"),
+                SchemaField("int_value",            "INTEGER", mode="NULLABLE"),
+                SchemaField("float_value",          "INTEGER", mode="NULLABLE"),
+                SchemaField("double_value",         "INTEGER", mode="NULLABLE"),
+                SchemaField("set_timestamp_micros", "INTEGER", mode="NULLABLE"),
+            ]),
+        ]),
+        SchemaField("ecommerce", "RECORD", mode="NULLABLE", fields=[
+            SchemaField("total_item_quantity",     "INTEGER", mode="NULLABLE"),
+            SchemaField("purchase_revenue_in_usd", "FLOAT",   mode="NULLABLE"),
+            SchemaField("purchase_revenue",        "FLOAT",   mode="NULLABLE"),
+            SchemaField("refund_value_in_usd",     "FLOAT",   mode="NULLABLE"),
+            SchemaField("refund_value",            "FLOAT",   mode="NULLABLE"),
+            SchemaField("shipping_value_in_usd",   "FLOAT",   mode="NULLABLE"),
+            SchemaField("shipping_value",          "FLOAT",   mode="NULLABLE"),
+            SchemaField("tax_value_in_usd",        "FLOAT",   mode="NULLABLE"),
+            SchemaField("tax_value",               "FLOAT",   mode="NULLABLE"),
+            SchemaField("unique_items",            "INTEGER", mode="NULLABLE"),
+            SchemaField("transaction_id",          "STRING",  mode="NULLABLE"),
+        ]),
+        SchemaField("traffic_source", "RECORD", mode="NULLABLE", fields=[
+            SchemaField("medium", "STRING", mode="NULLABLE"),
+            SchemaField("name",   "STRING", mode="NULLABLE"),
+            SchemaField("source", "STRING", mode="NULLABLE"),
+        ]),
+        SchemaField("device", "RECORD", mode="NULLABLE", fields=[
+            SchemaField("category",                 "STRING",  mode="NULLABLE"),
+            SchemaField("mobile_brand_name",        "STRING",  mode="NULLABLE"),
+            SchemaField("mobile_model_name",        "STRING",  mode="NULLABLE"),
+            SchemaField("mobile_marketing_name",    "STRING",  mode="NULLABLE"),
+            SchemaField("mobile_os_hardware_model", "INTEGER", mode="NULLABLE"),
+            SchemaField("operating_system",         "STRING",  mode="NULLABLE"),
+            SchemaField("operating_system_version", "STRING",  mode="NULLABLE"),
+            SchemaField("vendor_id",                "INTEGER", mode="NULLABLE"),
+            SchemaField("advertising_id",           "INTEGER", mode="NULLABLE"),
+            SchemaField("language",                 "STRING",  mode="NULLABLE"),
+            SchemaField("is_limited_ad_tracking",   "STRING",  mode="NULLABLE"),
+            SchemaField("time_zone_offset_seconds", "INTEGER", mode="NULLABLE"),
+            SchemaField("web_info", "RECORD", mode="NULLABLE", fields=[
+                SchemaField("browser",         "STRING", mode="NULLABLE"),
+                SchemaField("browser_version", "STRING", mode="NULLABLE"),
+            ]),
+        ]),
+        SchemaField("geo", "RECORD", mode="NULLABLE", fields=[
+            SchemaField("continent",     "STRING", mode="NULLABLE"),
+            SchemaField("sub_continent", "STRING", mode="NULLABLE"),
+            SchemaField("country",       "STRING", mode="NULLABLE"),
+            SchemaField("region",        "STRING", mode="NULLABLE"),
+            SchemaField("city",          "STRING", mode="NULLABLE"),
+            SchemaField("metro",         "STRING", mode="NULLABLE"),
+        ]),
+        SchemaField("user_ltv", "RECORD", mode="NULLABLE", fields=[
+            SchemaField("revenue",  "FLOAT",  mode="NULLABLE"),
+            SchemaField("currency", "STRING", mode="NULLABLE"),
+        ]),
+        SchemaField("platform",  "STRING",  mode="NULLABLE"),
+        SchemaField("stream_id", "INTEGER", mode="NULLABLE"),
+        SchemaField("privacy_info", "RECORD", mode="NULLABLE", fields=[
+            SchemaField("analytics_storage",    "INTEGER", mode="NULLABLE"),
+            SchemaField("ads_storage",          "INTEGER", mode="NULLABLE"),
+            SchemaField("uses_transient_token", "STRING",  mode="NULLABLE"),
+        ]),
+        SchemaField("app_info", "RECORD", mode="NULLABLE", fields=[
+            SchemaField("id",              "STRING", mode="NULLABLE"),
+            SchemaField("version",         "STRING", mode="NULLABLE"),
+            SchemaField("install_store",   "STRING", mode="NULLABLE"),
+            SchemaField("firebase_app_id", "STRING", mode="NULLABLE"),
+            SchemaField("install_source",  "STRING", mode="NULLABLE"),
+        ]),
+        SchemaField("event_dimensions", "RECORD", mode="NULLABLE", fields=[
+            SchemaField("hostname", "STRING", mode="NULLABLE"),
+        ]),
+        SchemaField("ingested_at",         "TIMESTAMP", mode="NULLABLE"),
+        SchemaField("source_table_suffix", "STRING",    mode="NULLABLE"),
+    ]
+    # No partitioning — BigQuery project-level restriction prevents
+    # DML from persisting in partitioned tables in this environment.
+    # Partitioning documented as production recommendation in design doc.
+    table = bigquery.Table(table_id, schema=schema)
+    client.create_table(table)
+    log.info("raw_events table ready")
 
-    Bootstrap pattern: CREATE TABLE IF NOT EXISTS ... AS SELECT ... LIMIT 0
-    Schema is inferred directly from the source — no manual definition needed.
-    This eliminates all type mismatch errors permanently.
 
-    Additions over source schema:
-    - event_date_dt (DATE): replaces event_date (STRING) as partition key
-    - event_id (STRING): MD5 surrogate key for MERGE deduplication
-
-    Partitioned by event_date_dt.
-    Clustered by event_name + user_pseudo_id.
-    """
-    project = config['project']['gcp_project_id']
-    dataset = config['project']['dataset']
-
-    sql = """
-        CREATE TABLE IF NOT EXISTS `{project}.{dataset}.raw_events`
-        PARTITION BY event_date_dt
-        CLUSTER BY event_name, user_pseudo_id
-        AS SELECT
-            -- Partition key: DATE type replaces STRING event_date
-            PARSE_DATE('%Y%m%d', event_date)        AS event_date_dt,
-
-            -- Surrogate key for MERGE deduplication
-            TO_HEX(MD5(CONCAT(
-                COALESCE(event_date,                                ''),
-                COALESCE(user_pseudo_id,                           ''),
-                COALESCE(CAST(event_timestamp AS STRING),          ''),
-                COALESCE(event_name,                               ''),
-                COALESCE(CAST(event_bundle_sequence_id AS STRING), '0')
-            )))                                     AS event_id,
-
-            -- All source fields except event_date (replaced by event_date_dt)
-            -- Schema inherited exactly from source — no type mismatches possible
-            * EXCEPT(event_date),
-
-            -- Ingestion metadata
-            CURRENT_TIMESTAMP()                     AS ingested_at,
-            event_date                              AS source_table_suffix
-
-        FROM `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_20201101`
-        LIMIT 0
-    """.format(project=project, dataset=dataset)
-
-    job = client.query(sql)
-    job.result()
-    log.info(f"raw_events table ready")
-
-
-def create_raw_purchase_items_if_not_exists(
-    client: bigquery.Client,
-    config: dict
-) -> None:
-    """
-    Creates raw_purchase_items table using source schema as template.
-
-    Bootstrap pattern: CREATE TABLE IF NOT EXISTS ... AS SELECT ... LIMIT 0
-    Item fields projected explicitly — not item.* — to prevent silent schema
-    divergence if GA4 adds new item fields in the future.
-
-    Additions over source schema:
-    - event_date_dt (DATE): partition key
-    - item_event_id (STRING): MD5 surrogate key for MERGE deduplication
-    - event_id (STRING): same hash as raw_events.event_id for cross-table joins
-    - transaction_id (STRING): promoted from ecommerce struct for easy access
-    - user_pseudo_id (STRING): copied from event level
-    - item_position (INT64): UNNEST offset for row uniqueness within transaction
-
-    Partitioned by event_date_dt.
-    Clustered by item_name + transaction_id.
-    """
-    project = config['project']['gcp_project_id']
-    dataset = config['project']['dataset']
-
-    sql = """
-        CREATE TABLE IF NOT EXISTS `{project}.{dataset}.raw_purchase_items`
-        PARTITION BY event_date_dt
-        CLUSTER BY item_name, transaction_id
-        AS SELECT
-            -- Partition key
-            PARSE_DATE('%Y%m%d', event_date)            AS event_date_dt,
-
-            -- Surrogate key for item-level deduplication
-            -- CAST(0 AS INT64) ensures INT64 type matches production MERGE
-            -- which uses item_offset (INT64) from UNNEST WITH OFFSET
-            TO_HEX(MD5(CONCAT(
-                COALESCE(event_date,                                    ''),
-                COALESCE(ecommerce.transaction_id,                     ''),
-                COALESCE(user_pseudo_id,                               ''),
-                COALESCE(CAST(event_timestamp AS STRING),              ''),
-                COALESCE(CAST(CAST(0 AS INT64) AS STRING),             '0')
-            )))                                         AS item_event_id,
-
-            -- Event reference key — same hash as raw_events.event_id
-            -- Enables clean joins without relying on nullable transaction_id
-            TO_HEX(MD5(CONCAT(
-                COALESCE(event_date,                                    ''),
-                COALESCE(user_pseudo_id,                               ''),
-                COALESCE(CAST(event_timestamp AS STRING),              ''),
-                COALESCE(event_name,                                   ''),
-                COALESCE(CAST(event_bundle_sequence_id AS STRING),     '0')
-            )))                                         AS event_id,
-
-            -- Transaction reference
-            ecommerce.transaction_id                    AS transaction_id,
-
-            -- User identifier
-            user_pseudo_id,
-
-            -- Item position within transaction array
-            -- CAST(0 AS INT64) explicitly typed to match production MERGE
-            -- which inserts item_offset (INT64) from UNNEST WITH OFFSET
-            CAST(0 AS INT64)                            AS item_position,
-
-            -- Item fields projected explicitly (not item.*)
-            -- Explicit projection prevents silent schema divergence
-            -- if GA4 adds new item fields in the future
-            item.item_id,
-            item.item_name,
-            item.item_brand,
-            item.item_variant,
-            item.item_category,
-            item.item_category2,
-            item.item_category3,
-            item.price_in_usd,
-            item.price,
-            item.quantity,
-            item.item_revenue_in_usd,
-            item.item_revenue,
-            item.item_refund_in_usd,
-            item.item_refund,
-            item.coupon,
-            item.affiliation,
-            item.item_list_id,
-            item.item_list_name,
-            item.item_list_index,
-            item.promotion_id,
-            item.promotion_name,
-            item.creative_name,
-            item.creative_slot,
-
-            -- Ingestion metadata
-            CURRENT_TIMESTAMP()                         AS ingested_at,
-            event_date                                  AS source_table_suffix
-
-        FROM `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_20201101`
-        CROSS JOIN UNNEST(items) AS item
-        WHERE event_name = 'purchase'
-        LIMIT 0
-    """.format(project=project, dataset=dataset)
-
-    job = client.query(sql)
-    job.result()
-    log.info(f"raw_purchase_items table ready")
+def create_raw_purchase_items_if_not_exists(client, config):
+    from google.cloud.bigquery import SchemaField
+    project  = config['project']['gcp_project_id']
+    dataset  = config['project']['dataset']
+    table_id = f"{project}.{dataset}.raw_purchase_items"
+    try:
+        client.get_table(table_id)
+        log.info("raw_purchase_items table ready")
+        return
+    except Exception:
+        pass
+    schema = [
+        SchemaField("event_date_dt",       "DATE",      mode="NULLABLE"),
+        SchemaField("item_event_id",       "STRING",    mode="NULLABLE"),
+        SchemaField("event_id",            "STRING",    mode="NULLABLE"),
+        SchemaField("transaction_id",      "STRING",    mode="NULLABLE"),
+        SchemaField("user_pseudo_id",      "STRING",    mode="NULLABLE"),
+        SchemaField("item_position",       "INTEGER",   mode="NULLABLE"),
+        SchemaField("item_id",             "STRING",    mode="NULLABLE"),
+        SchemaField("item_name",           "STRING",    mode="NULLABLE"),
+        SchemaField("item_brand",          "STRING",    mode="NULLABLE"),
+        SchemaField("item_variant",        "STRING",    mode="NULLABLE"),
+        SchemaField("item_category",       "STRING",    mode="NULLABLE"),
+        SchemaField("item_category2",      "STRING",    mode="NULLABLE"),
+        SchemaField("item_category3",      "STRING",    mode="NULLABLE"),
+        SchemaField("price_in_usd",        "FLOAT",     mode="NULLABLE"),
+        SchemaField("price",               "FLOAT",     mode="NULLABLE"),
+        SchemaField("quantity",            "INTEGER",   mode="NULLABLE"),
+        SchemaField("item_revenue_in_usd", "FLOAT",     mode="NULLABLE"),
+        SchemaField("item_revenue",        "FLOAT",     mode="NULLABLE"),
+        SchemaField("item_refund_in_usd",  "FLOAT",     mode="NULLABLE"),
+        SchemaField("item_refund",         "FLOAT",     mode="NULLABLE"),
+        SchemaField("coupon",              "STRING",    mode="NULLABLE"),
+        SchemaField("affiliation",         "STRING",    mode="NULLABLE"),
+        SchemaField("item_list_id",        "STRING",    mode="NULLABLE"),
+        SchemaField("item_list_name",      "STRING",    mode="NULLABLE"),
+        SchemaField("item_list_index",     "STRING",    mode="NULLABLE"),
+        SchemaField("promotion_id",        "STRING",    mode="NULLABLE"),
+        SchemaField("promotion_name",      "STRING",    mode="NULLABLE"),
+        SchemaField("creative_name",       "STRING",    mode="NULLABLE"),
+        SchemaField("creative_slot",       "STRING",    mode="NULLABLE"),
+        SchemaField("ingested_at",         "TIMESTAMP", mode="NULLABLE"),
+        SchemaField("source_table_suffix", "STRING",    mode="NULLABLE"),
+    ]
+    table = bigquery.Table(table_id, schema=schema)
+    client.create_table(table)
+    log.info("raw_purchase_items table ready")
 
 
 def create_pipeline_runs_if_not_exists(
@@ -504,8 +507,8 @@ def run_merge_for_date(
     sql_template: str
 ) -> int:
     """
-    Runs MERGE SQL for a specific date.
-    Returns number of rows affected.
+    Runs DELETE + INSERT SQL for a specific date.
+    Returns number of rows inserted.
     """
     project = config['project']['gcp_project_id']
     dataset = config['project']['dataset']
@@ -516,11 +519,22 @@ def run_merge_for_date(
         date=target_date
     )
 
-    job = client.query(sql)
-    job.result()
+    # Split on semicolons — run DELETE and INSERT separately
+    statements = [s.strip() for s in sql.split(';') if s.strip()]
 
-    rows = job.num_dml_affected_rows or 0
-    return rows
+    total_rows = 0
+    for statement in statements:
+        if not statement:
+            continue
+
+        job = client.query(statement)
+        job.result()
+
+        # Strip comments to detect statement type
+        if 'INSERT INTO' in statement.upper():
+            total_rows += job.num_dml_affected_rows or 0
+
+    return total_rows
 
 
 # ─────────────────────────────────────────────

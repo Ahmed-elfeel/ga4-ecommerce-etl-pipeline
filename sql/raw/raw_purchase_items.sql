@@ -48,12 +48,45 @@
      MERGE only inserts, never updates. Raw data is append-only.
 */
 
-MERGE INTO `{project}.{dataset}.raw_purchase_items` AS target
+DELETE FROM `{project}.{dataset}.raw_purchase_items`
+WHERE source_table_suffix = '{date}';
 
-USING (
+INSERT INTO `{project}.{dataset}.raw_purchase_items` (
+    event_date_dt,
+    item_event_id,
+    event_id,
+    transaction_id,
+    user_pseudo_id,
+    item_position,
+    item_id,
+    item_name,
+    item_brand,
+    item_variant,
+    item_category,
+    item_category2,
+    item_category3,
+    price_in_usd,
+    price,
+    quantity,
+    item_revenue_in_usd,
+    item_revenue,
+    item_refund_in_usd,
+    item_refund,
+    coupon,
+    affiliation,
+    item_list_id,
+    item_list_name,
+    item_list_index,
+    promotion_id,
+    promotion_name,
+    creative_name,
+    creative_slot,
+    ingested_at,
+    source_table_suffix
+)
     -- CTE filters to purchase events and projects only needed columns
     -- BEFORE UNNEST to minimize data scanned
-    WITH purchases AS (
+WITH purchases AS (
         SELECT
             event_date, -- partition key
             event_name, -- To include it in event_id hash
@@ -137,78 +170,3 @@ USING (
 
     FROM purchases p
     CROSS JOIN UNNEST(p.items) AS item WITH OFFSET AS item_offset
-
-) AS source
-
--- Partition guard: static literal forces BigQuery to prune
--- target to exactly one partition before evaluating item_event_id
-ON  target.event_date_dt  = PARSE_DATE('%Y%m%d', '{date}')
-AND target.item_event_id  = source.item_event_id
-
--- Raw layer is immutable — insert only, never update
-WHEN NOT MATCHED THEN INSERT (
-    event_date_dt,
-    item_event_id,
-    event_id,
-    transaction_id,
-    user_pseudo_id,
-    item_position,
-    item_id,
-    item_name,
-    item_brand,
-    item_variant,
-    item_category,
-    item_category2,
-    item_category3,
-    price_in_usd,
-    price,
-    quantity,
-    item_revenue_in_usd,
-    item_revenue,
-    item_refund_in_usd,
-    item_refund,
-    coupon,
-    affiliation,
-    item_list_id,
-    item_list_name,
-    item_list_index,
-    promotion_id,
-    promotion_name,
-    creative_name,
-    creative_slot,
-    ingested_at,
-    source_table_suffix
-)
-VALUES (
-    source.event_date_dt,
-    source.item_event_id,
-    source.event_id,
-    source.transaction_id,
-    source.user_pseudo_id,
-    source.item_position,
-    source.item_id,
-    source.item_name,
-    source.item_brand,
-    source.item_variant,
-    source.item_category,
-    source.item_category2,
-    source.item_category3,
-    source.price_in_usd,
-    source.price,
-    source.quantity,
-    source.item_revenue_in_usd,
-    source.item_revenue,
-    source.item_refund_in_usd,
-    source.item_refund,
-    source.coupon,
-    source.affiliation,
-    source.item_list_id,
-    source.item_list_name,
-    source.item_list_index,
-    source.promotion_id,
-    source.promotion_name,
-    source.creative_name,
-    source.creative_slot,
-    source.ingested_at,
-    source.source_table_suffix
-);
