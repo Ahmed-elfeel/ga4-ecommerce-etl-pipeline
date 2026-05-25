@@ -17,6 +17,7 @@ Usage:
 """
 
 import logging
+import time
 from datetime import datetime, timezone
 
 import yaml
@@ -34,6 +35,29 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 log = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────
+# RETRY HELPER
+# ─────────────────────────────────────────────
+def with_retries(fn, max_retries=3, delay_seconds=30, backoff=2.0, label=""):
+    """Retry an idempotent operation with exponential backoff.
+    Safe here because all retried ops (clear+write) are idempotent.
+    """
+    attempt = 0
+    while True:
+        try:
+            return fn()
+        except Exception as e:
+            attempt += 1
+            if attempt > max_retries:
+                raise
+            wait = delay_seconds * (backoff ** (attempt - 1))
+            log.warning(
+                f"{label} failed (attempt {attempt}/{max_retries}): {e} — "
+                f"retrying in {wait:.0f}s"
+            )
+            time.sleep(wait)
 
 
 # ─────────────────────────────────────────────
@@ -95,7 +119,7 @@ def read_daily_metrics(client: bigquery.Client, config: dict) -> list:
             new_customers,
             returning_customers,
             sessions,
-            ROUND(conversion_rate, 2) AS conversion_rate_pct
+            ROUND(conversion_rate * 100, 2) AS conversion_rate_pct
         FROM `{project}.darkroom_ecommerce_mart.mart_daily_metrics`
         ORDER BY date ASC
     """
@@ -155,10 +179,11 @@ def read_weekly_metrics(client: bigquery.Client, config: dict) -> list:
             net_revenue,
             total_orders,
             avg_order_value,
+            unique_customers,
             new_customers,
             returning_customers,
             sessions,
-            ROUND(conversion_rate, 2) AS conversion_rate_pct
+            ROUND(conversion_rate * 100, 2) AS conversion_rate_pct
         FROM `{project}.darkroom_ecommerce_mart.mart_weekly_metrics`
         ORDER BY week_start ASC
     """
@@ -174,6 +199,7 @@ def read_weekly_metrics(client: bigquery.Client, config: dict) -> list:
         "Net Revenue (USD)",
         "Total Orders",
         "Avg Order Value (USD)",
+        "Unique Customers",
         "New Customers",
         "Returning Customers",
         "Sessions",
@@ -190,6 +216,7 @@ def read_weekly_metrics(client: bigquery.Client, config: dict) -> list:
             float(row.net_revenue or 0),
             int(row.total_orders or 0),
             float(row.avg_order_value or 0),
+            int(row.unique_customers or 0),
             int(row.new_customers or 0),
             int(row.returning_customers or 0),
             int(row.sessions or 0),
@@ -218,22 +245,31 @@ def write_to_sheet(
     - Dates never duplicate because we always clear first
     """
     sheets = service.spreadsheets()
+    max_retries = 3
+    delay       = 30
 
-    # Step 1: Clear existing content
-    sheets.values().clear(
-        spreadsheetId=spreadsheet_id,
-        range=f"{tab_name}!A1:Z10000"
-    ).execute()
+    def _clear():
+        sheets.values().clear(
+            spreadsheetId=spreadsheet_id,
+            range=f"{tab_name}!A1:Z10000"
+        ).execute()
+
+    def _write():
+        sheets.values().update(
+            spreadsheetId=spreadsheet_id,
+            range=f"{tab_name}!A1",
+            valueInputOption="USER_ENTERED",
+            body={"values": data}
+        ).execute()
+
+    # Step 1: Clear existing content (retried — idempotent)
+    with_retries(_clear, max_retries=max_retries, delay_seconds=delay,
+                 label=f"clear {tab_name}")
     log.info(f"Cleared tab: {tab_name}")
 
-    # Step 2: Write fresh data
-    sheets.values().update(
-        spreadsheetId=spreadsheet_id,
-        range=f"{tab_name}!A1",
-        valueInputOption="USER_ENTERED",
-        body={"values": data}
-    ).execute()
-
+    # Step 2: Write fresh data (retried — idempotent after clear)
+    with_retries(_write, max_retries=max_retries, delay_seconds=delay,
+                 label=f"write {tab_name}")
     log.info(f"Written {len(data) - 1} rows to tab: {tab_name}")
 
 
@@ -297,6 +333,66 @@ def format_sheet(
 
 
 # ─────────────────────────────────────────────
+# SHEETS — TAB MANAGEMENT
+# ─────────────────────────────────────────────
+def ensure_tab_exists(service, spreadsheet_id: str, tab_name: str) -> None:
+    """Create the tab if it doesn't already exist."""
+    meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    titles = [s['properties']['title'] for s in meta['sheets']]
+    if tab_name not in titles:
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"requests": [{"addSheet": {"properties": {"title": tab_name}}}]}
+        ).execute()
+        log.info(f"Created tab: {tab_name}")
+
+
+# ─────────────────────────────────────────────
+# BIGQUERY — READ PRODUCT METRICS
+# ─────────────────────────────────────────────
+def read_product_metrics(client: bigquery.Client, config: dict) -> list:
+    """
+    Read mart_product_metrics from BigQuery (top 20 by revenue).
+    Returns list of rows as lists (for Sheets API).
+    First row is headers.
+    """
+    project = config['project']['gcp_project_id']
+    query = f"""
+        SELECT
+            revenue_rank,
+            item_name,
+            category,
+            total_revenue,
+            total_refunds,
+            net_revenue,
+            total_quantity_sold,
+            total_orders,
+            avg_price_usd,
+            quantity_rank
+        FROM `{project}.darkroom_ecommerce_mart.mart_product_metrics`
+        ORDER BY revenue_rank ASC
+        LIMIT 20
+    """
+    rows = list(client.query(query).result())
+    log.info(f"Read {len(rows)} rows from mart_product_metrics")
+    headers = [
+        "Revenue Rank", "Product", "Category", "Total Revenue (USD)",
+        "Total Refunds (USD)", "Net Revenue (USD)", "Quantity Sold",
+        "Orders", "Avg Price (USD)", "Quantity Rank"
+    ]
+    data = [headers]
+    for row in rows:
+        data.append([
+            int(row.revenue_rank or 0), str(row.item_name or ""),
+            str(row.category or ""), float(row.total_revenue or 0),
+            float(row.total_refunds or 0), float(row.net_revenue or 0),
+            int(row.total_quantity_sold or 0), int(row.total_orders or 0),
+            float(row.avg_price_usd or 0), int(row.quantity_rank or 0)
+        ])
+    return data
+
+
+# ─────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────
 def export_to_sheets(config: dict) -> None:
@@ -352,10 +448,29 @@ def export_to_sheets(config: dict) -> None:
         num_columns=len(weekly_data[0])
     )
 
+    # ── Top Products ───────────────────────────
+    products_tab = config['sheets']['products_tab']
+    ensure_tab_exists(sheets_service, spreadsheet_id, products_tab)
+    # Re-fetch sheet IDs so the new tab is included for formatting
+    sheet_meta = sheets_service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id
+    ).execute()
+    sheet_ids = {
+        s['properties']['title']: s['properties']['sheetId']
+        for s in sheet_meta['sheets']
+    }
+
+    log.info("Exporting product metrics...")
+    product_data = read_product_metrics(bq_client, config)
+    write_to_sheet(sheets_service, spreadsheet_id, products_tab, product_data)
+    format_sheet(sheets_service, spreadsheet_id, sheet_ids[products_tab],
+                 num_columns=len(product_data[0]))
+
     log.info(
         f"Export complete: "
         f"{len(daily_data)-1} daily rows, "
-        f"{len(weekly_data)-1} weekly rows"
+        f"{len(weekly_data)-1} weekly rows, "
+        f"{len(product_data)-1} product rows"
     )
 
 

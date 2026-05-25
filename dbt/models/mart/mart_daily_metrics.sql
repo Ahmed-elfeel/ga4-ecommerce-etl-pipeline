@@ -39,9 +39,12 @@ WITH daily_purchases AS (
         ROUND(
             SUM(p.revenue_usd) - SUM(COALESCE(p.refund_usd, 0))
         , 2)                                                    AS net_revenue,
-        COUNT(DISTINCT p.transaction_id)                        AS total_orders,
+        -- An order = one purchase event. transaction_id is NOT unique per order
+        -- in this obfuscated dataset (distinct purchases collapse onto shared
+        -- ids), so event_id (one row per purchase event) is the reliable grain.
+        COUNT(DISTINCT p.event_id)                              AS total_orders,
         ROUND(
-            SUM(p.revenue_usd) / NULLIF(COUNT(DISTINCT p.transaction_id), 0)
+            SUM(p.revenue_usd) / NULLIF(COUNT(DISTINCT p.event_id), 0)
         , 2)                                                    AS avg_order_value,
         COUNT(DISTINCT p.user_pseudo_id)                        AS unique_customers,
 
