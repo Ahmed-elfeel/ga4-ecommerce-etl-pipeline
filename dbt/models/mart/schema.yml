@@ -1,0 +1,50 @@
+version: 2
+
+models:
+  - name: mart_daily_metrics
+    description: >
+      Daily aggregated ecommerce metrics for Google Sheets Tab 1.
+      One row per day covering revenue, orders, customers, and traffic.
+    columns:
+      - name: date
+        description: Calendar date
+        tests:
+          - unique
+          - not_null
+      - name: gross_revenue
+        description: Total purchase revenue in USD before refunds
+      - name: net_revenue
+        description: Gross revenue minus refunds
+      - name: total_orders
+        description: Count of distinct transactions
+      - name: conversion_rate
+        description: total_orders divided by sessions
+
+  - name: mart_weekly_metrics
+    description: >
+      Weekly aggregated ecommerce metrics for Google Sheets Tab 2.
+      One row per ISO week (Monday-Sunday).
+      Weekly totals reconcile with daily data.
+    columns:
+      - name: week_start
+        description: Monday of the ISO week
+        tests:
+          - unique
+          - not_null
+      - name: week_end
+        description: Sunday of the ISO week
+
+  - name: mart_product_metrics
+    description: >
+      Product-level aggregated metrics.
+      One row per product (item_name).
+      Used for top products by revenue and quantity reporting.
+    columns:
+      - name: item_name
+        description: Product name
+        tests:
+          - not_null
+      - name: revenue_rank
+        description: Product rank by total revenue (1 = highest)
+      - name: quantity_rank
+        description: Product rank by total quantity sold (1 = highest)
