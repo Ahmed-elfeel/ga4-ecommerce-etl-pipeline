@@ -110,14 +110,14 @@ USING (
 
         -- Pricing and quantity
         item.price_in_usd                               AS price_in_usd, -- price in USD
-        item.price                                      AS price_local, -- price in local currency
+        item.price                                      AS price, -- price in local currency
         item.quantity                                   AS quantity, -- quantity of items purchased
 
         -- Revenue and refunds
         item.item_revenue_in_usd                        AS item_revenue_in_usd,
-        item.item_revenue                               AS item_revenue_local,
+        item.item_revenue                               AS item_revenue,
         item.item_refund_in_usd                         AS item_refund_in_usd,
-        item.item_refund                                AS item_refund_local,
+        item.item_refund                                AS item_refund,
 
         -- Promotion and list context
         -- Captured for completeness — useful for merchandising analysis
@@ -161,12 +161,12 @@ WHEN NOT MATCHED THEN INSERT (
     item_category2,
     item_category3,
     price_in_usd,
-    price_local,
+    price,
     quantity,
     item_revenue_in_usd,
-    item_revenue_local,
+    item_revenue,
     item_refund_in_usd,
-    item_refund_local,
+    item_refund,
     coupon,
     affiliation,
     item_list_id,
@@ -194,12 +194,12 @@ VALUES (
     source.item_category2,
     source.item_category3,
     source.price_in_usd,
-    source.price_local,
+    source.price,
     source.quantity,
     source.item_revenue_in_usd,
-    source.item_revenue_local,
+    source.item_revenue,
     source.item_refund_in_usd,
-    source.item_refund_local,
+    source.item_refund,
     source.coupon,
     source.affiliation,
     source.item_list_id,
