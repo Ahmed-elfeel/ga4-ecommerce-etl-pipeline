@@ -1,0 +1,133 @@
+
+version: 2
+
+models:
+
+  - name: stg_sessions
+
+    description: >
+
+      One row per unique session per user.
+
+      Session defined by session_start event in GA4.
+
+      session_key is MD5(user_pseudo_id + ga_session_id) for global uniqueness.
+
+    columns:
+
+      - name: session_key
+
+        description: Globally unique session identifier
+
+        tests:
+
+          - unique
+
+          - not_null
+
+      - name: user_pseudo_id
+
+        description: Anonymous user identifier
+
+        tests:
+
+          - not_null
+
+      - name: ga_session_id
+
+        description: GA4 session ID (unique per user only, not globally)
+
+        tests:
+
+          - not_null
+
+  - name: stg_purchases
+
+    description: >
+
+      One row per purchase transaction.
+
+      Enriched with session context and event_params.
+
+    columns:
+
+      - name: event_id
+
+        description: Unique purchase event identifier
+
+        tests:
+
+          - unique
+
+          - not_null
+
+      - name: transaction_id
+
+        description: Transaction identifier from ecommerce struct
+
+        tests:
+
+          - not_null
+
+      - name: revenue_usd
+
+        description: Transaction revenue in USD
+
+  - name: stg_purchase_items
+
+    description: >
+
+      One row per item per transaction.
+
+      Source is raw_purchase_items (already unnested at raw layer).
+
+    columns:
+
+      - name: item_event_id
+
+        description: Unique item-level identifier
+
+        tests:
+
+          - unique
+
+          - not_null
+
+      - name: event_id
+
+        description: Reference to parent purchase event in stg_purchases
+
+        tests:
+
+          - not_null
+
+  - name: stg_users
+
+    description: >
+
+      One row per unique user (user_pseudo_id).
+
+      Full table rebuild — captures first_seen_date accurately.
+
+      Built from session_start events.
+
+    columns:
+
+      - name: user_pseudo_id
+
+        description: Anonymous user identifier (primary key)
+
+        tests:
+
+          - unique
+
+          - not_null
+
+      - name: first_seen_date
+
+        description: First date user appeared in the dataset
+
+        tests:
+
+          - not_null
+
