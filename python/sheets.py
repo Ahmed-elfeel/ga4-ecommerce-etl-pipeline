@@ -393,6 +393,246 @@ def read_product_metrics(client: bigquery.Client, config: dict) -> list:
 
 
 # ─────────────────────────────────────────────
+# DOCUMENTATION TAB
+# ─────────────────────────────────────────────
+def build_documentation_data() -> tuple:
+    """
+    Build the content for the Documentation tab.
+
+    Written for business stakeholders — no technical jargon.
+    Returns (rows, section_row_indices) where section_row_indices
+    are the 0-based row numbers that should be formatted as section headers.
+    """
+    rows = []
+    section_indices = []
+
+    def col(name, what, how):
+        rows.append([name, what, how])
+
+    def section(title):
+        section_indices.append(len(rows))
+        rows.append([title, "", ""])
+
+    def spacer():
+        rows.append(["", "", ""])
+
+    # Column headers
+    col("Metric", "What It Measures", "How It's Calculated")
+    spacer()
+
+    # ── Daily Metrics ──────────────────────────────────────────────
+    section("DAILY METRICS  —  Tab 1")
+    col("Date",
+        "The calendar day the data represents",
+        "Each row covers one day of store activity, from November 1, 2020 through January 31, 2021")
+    col("Gross Revenue (USD)",
+        "Total sales income collected before deducting any refunds",
+        "All purchase amounts on that day added together")
+    col("Refund Amount (USD)",
+        "Total value of refunds paid back to customers that day",
+        "All refund amounts on that day added together")
+    col("Net Revenue (USD)",
+        "The revenue the store actually kept after refunds were deducted",
+        "Gross Revenue minus Refund Amount")
+    col("Total Orders",
+        "Number of completed purchases on that day",
+        "Each purchase transaction counts as one order")
+    col("Avg Order Value (USD)",
+        "The average amount customers spent per order",
+        "Gross Revenue divided by Total Orders")
+    col("Unique Customers",
+        "How many different customers made at least one purchase",
+        "Each shopper counted once, regardless of how many orders they placed that day")
+    col("New Customers",
+        "Shoppers who were buying from the store for the very first time",
+        "Customers whose very first purchase in the entire dataset was on this day")
+    col("Returning Customers",
+        "Customers who had already bought from the store before",
+        "Unique Customers minus New Customers")
+    col("Sessions",
+        "Number of individual website visits",
+        "Each time someone browses the store counts as one session")
+    col("Conversion Rate (%)",
+        "The percentage of website visits that ended in a completed purchase",
+        "Orders divided by Sessions, multiplied by 100. A value of 2.34 means 2.34% of visitors made a purchase")
+    spacer()
+
+    # ── Weekly Metrics ─────────────────────────────────────────────
+    section("WEEKLY METRICS  —  Tab 2")
+    col("Week Start (Monday)",
+        "The Monday that opens the reporting week",
+        "Weeks follow the standard business calendar: Monday through Sunday")
+    col("Week End (Sunday)",
+        "The Sunday that closes the reporting week",
+        "Always 6 days after the Week Start")
+    col("Gross Revenue (USD)",
+        "Total sales income for the full week before refunds",
+        "Each day's Gross Revenue added together across all 7 days in the week")
+    col("Refund Amount (USD)",
+        "Total refunds issued during the week",
+        "Each day's Refund Amount added together across the week")
+    col("Net Revenue (USD)",
+        "Revenue the store kept for the week after all refunds",
+        "Weekly Gross Revenue minus Weekly Refund Amount")
+    col("Total Orders",
+        "Total purchases placed during the week",
+        "Each day's Total Orders added together across the week")
+    col("Avg Order Value (USD)",
+        "Average amount spent per order during the week",
+        "Weekly Gross Revenue divided by Weekly Total Orders")
+    col("Unique Customers",
+        "How many different customers made at least one purchase during the week",
+        "Each shopper counted once for the whole week — a customer who bought on Monday and again on Thursday is still one customer, not two. This figure is calculated directly from the full week's purchases, not by adding up the daily numbers")
+    col("New Customers",
+        "First-time buyers during the week",
+        "Customers whose very first purchase ever fell within this week. These are additive — the weekly total equals the sum of the daily New Customer counts for the same days")
+    col("Returning Customers",
+        "Customers who had made at least one purchase before this week",
+        "Weekly Unique Customers minus Weekly New Customers")
+    col("Sessions",
+        "Total website visits during the week",
+        "Each day's Sessions added together across the week")
+    col("Conversion Rate (%)",
+        "Percentage of the week's website visits that resulted in a purchase",
+        "Weekly Total Orders divided by Weekly Sessions, multiplied by 100")
+    spacer()
+
+    # ── Top Products ───────────────────────────────────────────────
+    section("TOP PRODUCTS  —  Tab 3  (top 20 by revenue over the full period)")
+    col("Revenue Rank",
+        "This product's position when all products are sorted from highest to lowest total revenue",
+        "1 = the product that earned the most revenue across the full Nov 2020 – Jan 2021 period")
+    col("Product",
+        "The name of the product",
+        "Product name as recorded at the point of sale")
+    col("Category",
+        "The product family it belongs to",
+        "Primary category assigned to the product in the store catalogue")
+    col("Total Revenue (USD)",
+        "Total sales income this product generated, before refunds",
+        "All purchase amounts for this product added together across the full period")
+    col("Total Refunds (USD)",
+        "Total value of refunds on this product across the full period",
+        "All refund amounts for this product added together")
+    col("Net Revenue (USD)",
+        "Revenue from this product after all refunds are deducted",
+        "Total Revenue minus Total Refunds")
+    col("Quantity Sold",
+        "Total number of units of this product purchased",
+        "All quantities across every order that included this product, added together")
+    col("Orders",
+        "Number of orders that contained this product",
+        "Count of distinct purchase transactions that included at least one unit of this product")
+    col("Avg Price (USD)",
+        "The average price paid per unit",
+        "Total Revenue divided by Quantity Sold")
+    col("Quantity Rank",
+        "This product's position when all products are sorted from most to least units sold",
+        "1 = the best-selling product by volume across the full period")
+    spacer()
+
+    # ── Dataset Notes ──────────────────────────────────────────────
+    section("DATASET NOTES")
+    col("Date range",
+        "This report covers November 1, 2020 through January 31, 2021 — 92 days in total",
+        "Source: Google Analytics 4 sample ecommerce data from the Google Merchandise Store (public dataset)")
+    col("November 1, 2020",
+        "This day shows zero orders and zero revenue",
+        "A known characteristic of the source data: order identifiers are missing for all purchases on this specific day, so they cannot be included in order or revenue counts. Website session data for that day is still present")
+    col("Week definition",
+        "All weeks in this report run Monday through Sunday",
+        "The international business-week standard (ISO 8601) is used. Note: Google Analytics natively displays Sunday–Saturday weeks, so week-level totals here will differ from what you see when viewing the same period directly in GA4")
+    col("Unique Customers (weekly vs. daily)",
+        "Weekly unique customer counts cannot be obtained by adding up the daily figures",
+        "A shopper who buys on Monday and Thursday in the same week appears as 2 unique customers in the daily tab but as 1 in the weekly tab. Revenue, orders, and sessions do add up cleanly between the two tabs")
+
+    return rows, section_indices
+
+
+def format_documentation_sheet(
+    service,
+    spreadsheet_id: str,
+    sheet_id: int,
+    section_indices: list
+) -> None:
+    """
+    Formats the Documentation tab:
+    - Dark header row (row 0) — bold white text on dark background
+    - Light blue-grey section header rows — bold
+    - Freeze header row
+    - Auto-resize all 3 columns
+    """
+    requests = [
+        # Header row — dark background, white bold text
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 0, "endRowIndex": 1,
+                    "startColumnIndex": 0, "endColumnIndex": 3
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": {"red": 0.18, "green": 0.34, "blue": 0.52},
+                        "textFormat": {
+                            "bold": True,
+                            "foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}
+                        }
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor,textFormat)"
+            }
+        },
+        # Freeze header row
+        {
+            "updateSheetProperties": {
+                "properties": {
+                    "sheetId": sheet_id,
+                    "gridProperties": {"frozenRowCount": 1}
+                },
+                "fields": "gridProperties.frozenRowCount"
+            }
+        },
+        # Auto-resize all 3 columns
+        {
+            "autoResizeDimensions": {
+                "dimensions": {
+                    "sheetId": sheet_id,
+                    "dimension": "COLUMNS",
+                    "startIndex": 0,
+                    "endIndex": 3
+                }
+            }
+        }
+    ]
+
+    # Section header rows — light blue-grey background, bold
+    for row_idx in section_indices:
+        requests.append({
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": row_idx, "endRowIndex": row_idx + 1,
+                    "startColumnIndex": 0, "endColumnIndex": 3
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": {"red": 0.82, "green": 0.88, "blue": 0.95},
+                        "textFormat": {"bold": True}
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor,textFormat.bold)"
+            }
+        })
+
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={"requests": requests}
+    ).execute()
+    log.info(f"Formatted documentation sheet_id: {sheet_id}")
+
+
+# ─────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────
 def export_to_sheets(config: dict) -> None:
@@ -466,11 +706,31 @@ def export_to_sheets(config: dict) -> None:
     format_sheet(sheets_service, spreadsheet_id, sheet_ids[products_tab],
                  num_columns=len(product_data[0]))
 
+    # ── Documentation ──────────────────────────
+    ensure_tab_exists(sheets_service, spreadsheet_id, "Documentation")
+    # Re-fetch sheet IDs to pick up any newly created tabs
+    sheet_meta = sheets_service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id
+    ).execute()
+    sheet_ids = {
+        s['properties']['title']: s['properties']['sheetId']
+        for s in sheet_meta['sheets']
+    }
+
+    log.info("Writing documentation tab...")
+    doc_data, section_indices = build_documentation_data()
+    write_to_sheet(sheets_service, spreadsheet_id, "Documentation", doc_data)
+    format_documentation_sheet(
+        sheets_service, spreadsheet_id,
+        sheet_ids["Documentation"], section_indices
+    )
+
     log.info(
         f"Export complete: "
         f"{len(daily_data)-1} daily rows, "
         f"{len(weekly_data)-1} weekly rows, "
-        f"{len(product_data)-1} product rows"
+        f"{len(product_data)-1} product rows, "
+        f"documentation tab written"
     )
 
 
